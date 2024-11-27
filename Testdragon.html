@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <style>
+      body {
+        margin: 0;
+        overflow: hidden;
+        background: #1a1a1a;
+        cursor: none;
+      }
+      #cursor {
+        position: fixed;
+        width: 20px;
+        height: 20px;
+        border: 2px solid #00ff88;
+        border-radius: 50%;
+        pointer-events: none;
+        transform: translate(-50%, -50%);
+        box-shadow: 0 0 10px #00ff88;
+      }
+      .glow {
+        filter: url(#glow);
+      }
+    </style>
+  </head>
+  <body>
+    <div id="cursor"></div>
+    <svg id="canvas" width="100%" height="100%" style="position: fixed">
+      <defs>
+        <filter id="glow">
+          <feGaussianBlur stdDeviation="2" result="coloredBlur" />
+          <feMerge>
+            <feMergeNode in="coloredBlur" />
+            <feMergeNode in="SourceGraphic" />
+          </feMerge>
+        </filter>
+
+        <linearGradient id="bodyGradient" x1="0%" y1="0%" x2="100%" y2="0%">
+          <stop offset="0%" style="stop-color: #00ff88; stop-opacity: 1" />
+          <stop offset="100%" style="stop-color: #00cc69; stop-opacity: 1" />
+        </linearGradient>
+
+        <g id="dragonSegment">
+          <path
+            d="M-12,0 C-8,-8 -4,-10 0,0 C-4,10 -8,8 -12,0"
+            fill="url(#bodyGradient)"
+            class="glow"
+          />
+        </g>
+
+        <g id="dragonHead">
+          <path
+            d="M-15,0 L-5,-10 L5,0 L-5,10 Z"
+            fill="url(#bodyGradient)"
+            class="glow"
+          />
+          <circle cx="2" cy="-3" r="2" fill="#fff" class="glow" />
+        </g>
+      </defs>
+
+      <g id="particles"></g>
+      <g id="dragonBody"></g>
+    </svg>
+
+    <script>
+      const canvas = document.getElementById("canvas");
+      const cursor = document.getElementById("cursor");
+      const dragonBody = document.getElementById("dragonBody");
+      const particles = document.getElementById("particles");
+      const segments = 25;
+      const points = Array(segments)
+        .fill()
+        .map(() => ({ x: 0, y: 0 }));
+      let mouseX = 0,
+        mouseY = 0;
+      let lastX = 0,
+        lastY = 0;
+      const particlePool = [];
+
+      // สร้างส่วนของมังกร
+      for (let i = 0; i < segments; i++) {
+        const scale = i === 0 ? 2.5 : 1.8 - i / segments;
+        const segment = document.createElementNS(
+          "http://www.w3.org/2000/svg",
+          "use"
+        );
+        segment.setAttributeNS(
+          null,
+          "href",
+          i === 0 ? "#dragonHead" : "#dragonSegment"
+        );
+        segment.setAttributeNS(null, "id", `segment${i}`);
+        segment.style.opacity = 1 - (i / segments) * 0.3;
+        dragonBody.appendChild(segment);
+      }
+
+      // สร้าง particle
+      function createParticle(x, y) {
+        const particle = document.createElementNS(
+          "http://www.w3.org/2000/svg",
+          "circle"
+        );
+        particle.setAttributeNS(null, "r", "2");
+        particle.setAttributeNS(null, "fill", "#00ff88");
+        particle.style.opacity = "0";
+        particle.className = "glow";
+        particles.appendChild(particle);
+        return {
+          element: particle,
+          life: 1,
+          x,
+          y,
+          vx: (Math.random() - 0.5) * 2,
+          vy: (Math.random() - 0.5) * 2,
+        };
+      }
+
+      // อัพเดท particle
+      function updateParticles() {
+        for (let i = particlePool.length - 1; i >= 0; i--) {
+          const p = particlePool[i];
+          p.life -= 0.02;
+          if (p.life <= 0) {
+            particles.removeChild(p.element);
+            particlePool.splice(i, 1);
+            continue;
+          }
+          p.x += p.vx;
+          p.y += p.vy;
+          p.element.setAttributeNS(null, "cx", p.x);
+          p.element.setAttributeNS(null, "cy", p.y);
+          p.element.style.opacity = p.life;
+        }
+      }
+
+      document.addEventListener("mousemove", (e) => {
+        mouseX = e.clientX;
+        mouseY = e.clientY;
+        cursor.style.left = `${mouseX}px`;
+        cursor.style.top = `${mouseY}px`;
+      });
+
+      function animate() {
+        const dx = mouseX - lastX;
+        const dy = mouseY - lastY;
+        const speed = Math.sqrt(dx * dx + dy * dy);
+
+        lastX += dx * 0.1;
+        lastY += dy * 0.1;
+
+        points[0] = { x: lastX, y: lastY };
+
+        // สร้าง particle ตามความเร็ว
+        if (speed > 5) {
+          for (let i = 0; i < 2; i++) {
+            if (particlePool.length < 50) {
+              particlePool.push(createParticle(lastX, lastY));
+            }
+          }
+        }
+
+        updateParticles();
+
+        // อัพเดทส่วนของมังกร
+        for (let i = 1; i < segments; i++) {
+          const targetX = points[i - 1].x;
+          const targetY = points[i - 1].y;
+
+          points[i].x += (targetX - points[i].x) * 0.3;
+          points[i].y += (targetY - points[i].y) * 0.3;
+
+          const segment = document.getElementById(`segment${i - 1}`);
+          const currentAngle = Math.atan2(
+            points[i - 1].y - points[i].y,
+            points[i - 1].x - points[i].x
+          );
+
+          const scale = i === 0 ? 2.5 : 1.8 - i / segments;
+          const wiggle = i === 0 ? 0 : Math.sin(Date.now() * 0.01 + i) * 2;
+
+          segment.setAttributeNS(
+            null,
+            "transform",
+            `translate(${points[i - 1].x},${points[i - 1].y}) 
+                     rotate(${(currentAngle * 180) / Math.PI + wiggle}) 
+                     scale(${scale})`
+          );
+        }
+
+        requestAnimationFrame(animate);
+      }
+
+      // เริ่มต้นตำแหน่งที่กลางหน้าจอ
+      const centerX = window.innerWidth / 2;
+      const centerY = window.innerHeight / 2;
+      points.forEach((point) => {
+        point.x = centerX;
+        point.y = centerY;
+      });
+      mouseX = centerX;
+      mouseY = centerY;
+      lastX = centerX;
+      lastY = centerY;
+
+      animate();
+    </script>
+  </body>
+</html>
